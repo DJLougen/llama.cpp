@@ -1,3 +1,54 @@
+# llama.cpp — RYS-patched fork (Qwen3.5 / Qwen3Next)
+
+> **This is a personal fork of [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp), not upstream.** The upstream README follows below unchanged.
+
+## What this fork fixes
+
+RYS ("Repeat Your Self", [dnhkng](https://dnhkng.github.io/posts/rys/)) duplicates one or more middle transformer layers in a Qwen3.5 / Qwen3Next model, which breaks the hardcoded `full_attention_interval = 4` assumption in llama.cpp's loader. `blk.11` ends up with linear-attention tensors where the loader expects full-attention ones (or vice versa), and loading fails with:
+
+```
+check_tensor_dims: tensor 'blk.11.attn_q.weight' not found
+check_tensor_dims: tensor 'blk.11.attn_qkv.weight' has wrong shape; expected 2048, 9216, got 2048, 8192
+```
+
+This fork carries a **single commit on top of [`ggml-org/llama.cpp@d00685831`](https://github.com/ggml-org/llama.cpp/commit/d00685831)** that makes both the GGUF converter and the Qwen3.5 / Qwen3Next loaders honor a per-layer `layer_types` array. It is fully backward-compatible — non-RYS Qwen3.5 GGUFs still load on the stock interval-based path.
+
+### Affected models
+
+Any Qwen3.5-family model where RYS has duplicated one or more middle layers, e.g.:
+
+- [DJLougen/Ornstein3.6-35B-A3B-RYS-SABER](https://huggingface.co/DJLougen/Ornstein3.6-35B-A3B-RYS-SABER) — 41-layer RYS variant (BF16 GGUF)
+- [DJLougen/Ornstein3.6-35B-A3B-RYS-SABER-GGUF](https://huggingface.co/DJLougen/Ornstein3.6-35B-A3B-RYS-SABER-GGUF) — Q8/Q6/Q5/Q4/Q3 quants
+
+Stock llama.cpp, Ollama, LM Studio, and any runtime that embeds stock llama.cpp will fail to load these files until they pick up the patch.
+
+### What the patch touches
+
+- `convert_hf_to_gguf.py` (`Qwen3NextModel.set_gguf_parameters`) — when `layer_types` is present in the HF config, emits `head_count_kv` as a per-layer list (0 for linear-attention layers, base value for full-attention) instead of a scalar. Propagates to QWEN3NEXT / QWEN35 / QWEN35MOE via inheritance.
+- `src/llama-model.cpp` — Qwen3Next / Qwen3.5 / Qwen3.5-MoE loader blocks prefer the per-layer `head_count_kv` array when present; fall back to the interval formula otherwise. Tensor creation uses `hparams.n_embd_k_gqa(i)` / `n_embd_v_gqa(i)` per iteration so non-uniform `n_head_kv` reaches attention tensor shapes.
+- `src/models/qwen35moe.cpp`, `src/models/qwen3next.cpp` — `build_layer_attn` resolves `n_head_kv = hparams.n_head_kv(il)` so the per-layer value flows into the K/V reshape ops.
+
+Four files, ~81 line additions / ~21 deletions.
+
+### Build and use
+
+```bash
+git clone https://github.com/DJLougen/llama.cpp.git
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+
+./build/bin/llama-cli -m Ornstein3.6-35B-A3B-RYS-SABER-Q4_K_M.gguf -p "hi" -ngl 99
+```
+
+(Drop `-DGGML_CUDA=ON` for a CPU build. Backend selection is independent of the patch.)
+
+### Rebasing / upstreaming
+
+This fork tracks a fixed commit. It is **not** upstreamed — [`AGENTS.md`](AGENTS.md) in upstream forbids AI-assisted PRs, and the project maintainers prefer human-authored contributions for this kind of architecture-specific loader change. If you'd like to carry the fix into a newer llama.cpp base, the commit on `rys-qwen35` rebases cleanly so far; the touched regions in `llama-model.cpp` are isolated inside three case blocks (`LLM_ARCH_QWEN3NEXT`, `LLM_ARCH_QWEN35`, `LLM_ARCH_QWEN35MOE`).
+
+---
+
 # llama.cpp
 
 ![llama](https://user-images.githubusercontent.com/1991296/230134379-7181e485-c521-4d23-a0d6-f7b3b61ba524.png)
