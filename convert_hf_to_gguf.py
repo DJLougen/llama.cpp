@@ -4733,6 +4733,16 @@ class Qwen3NextModel(Qwen2MoeModel):
     model_arch = gguf.MODEL_ARCH.QWEN3NEXT
 
     def set_gguf_parameters(self):
+        # When layer_types is present (e.g. RYS-duplicated models where the full-attention
+        # pattern is no longer a fixed interval), emit head_count_kv as a per-layer array
+        # so the loader can identify linear-attention (n_head_kv == 0) layers explicitly.
+        layer_types = self.hparams.get("layer_types")
+        base_n_kv = self.hparams.get("num_key_value_heads")
+        if layer_types is not None and isinstance(base_n_kv, int):
+            self.hparams["num_key_value_heads"] = [
+                base_n_kv if lt == "full_attention" else 0
+                for lt in layer_types
+            ]
         super().set_gguf_parameters()
         self.gguf_writer.add_ssm_conv_kernel(self.hparams["linear_conv_kernel_dim"])
         self.gguf_writer.add_ssm_state_size(self.hparams["linear_key_head_dim"])

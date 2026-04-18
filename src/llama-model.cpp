@@ -2411,12 +2411,25 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
                 ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
 
-                // Mark recurrent layers (linear attention layers)
+                // Mark recurrent layers (linear attention layers).
+                // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
+                // models where full_attention is not on a fixed interval); otherwise fall
+                // back to the stock interval-based pattern.
                 {
-                    uint32_t full_attn_interval = 4;
-                    ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                    bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                        hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        if (hparams.n_head_kv(i) == 0) { has_per_layer_kv = true; break; }
+                    }
+                    if (has_per_layer_kv) {
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
+                        }
+                    } else {
+                        uint32_t full_attn_interval = 4;
+                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        }
                     }
                 }
 
@@ -2437,12 +2450,25 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
                 ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
 
-                // Mark recurrent layers (linear attention layers)
+                // Mark recurrent layers (linear attention layers).
+                // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
+                // models where full_attention is not on a fixed interval); otherwise fall
+                // back to the stock interval-based pattern.
                 {
-                    uint32_t full_attn_interval = 4;
-                    ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                    bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                        hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        if (hparams.n_head_kv(i) == 0) { has_per_layer_kv = true; break; }
+                    }
+                    if (has_per_layer_kv) {
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
+                        }
+                    } else {
+                        uint32_t full_attn_interval = 4;
+                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        }
                     }
                 }
 
@@ -2468,17 +2494,31 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
                 ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
 
-                // Mark recurrent layers (linear attention layers)
+                // Mark recurrent layers (linear attention layers).
+                // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
+                // models where full_attention is not on a fixed interval); otherwise fall
+                // back to the stock interval-based pattern.
                 {
-                    uint32_t full_attn_interval = 4;
-                    ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                    bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                        hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        if (hparams.n_head_kv(i) == 0) { has_per_layer_kv = true; break; }
+                    }
+                    if (has_per_layer_kv) {
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
+                        }
+                    } else {
+                        uint32_t full_attn_interval = 4;
+                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        }
                     }
                 }
 
                 switch (hparams.n_layer) {
                     case 40: type = LLM_TYPE_35B_A3B; break;
+                    case 41: type = LLM_TYPE_35B_A3B; break; // RYS-duplicated variant (+1 layer)
                     case 48: type = LLM_TYPE_122B_A10B; break;
                     case 60: type = LLM_TYPE_397B_A17B; break;
                     default: type = LLM_TYPE_UNKNOWN;
@@ -7330,10 +7370,12 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                         layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), { n_embd }, 0);
 
                         if (!hparams.is_recurrent(i)) {
-                            // Attention layers
+                            // Attention layers — use per-layer GQA dims (non-uniform with RYS)
+                            const int64_t n_embd_k_gqa_i = hparams.n_embd_k_gqa(i);
+                            const int64_t n_embd_v_gqa_i = hparams.n_embd_v_gqa(i);
                             layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), { n_embd, n_embd_head_k * n_head * 2 }, 0);
-                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa }, 0);
-                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa }, 0);
+                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa_i }, 0);
+                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa_i }, 0);
                             layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), { n_embd_head_k * n_head, n_embd }, 0);
 
                             // Q/K normalization for attention layers
@@ -7396,10 +7438,12 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                         layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), { n_embd }, 0);
 
                         if (!hparams.is_recurrent(i)) {
-                            // Attention layers
+                            // Attention layers — use per-layer GQA dims (non-uniform with RYS)
+                            const int64_t n_embd_k_gqa_i = hparams.n_embd_k_gqa(i);
+                            const int64_t n_embd_v_gqa_i = hparams.n_embd_v_gqa(i);
                             layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), { n_embd, n_embd_head_k * n_head * 2 }, 0);
-                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa }, 0);
-                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa }, 0);
+                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa_i }, 0);
+                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa_i }, 0);
                             layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), { n_embd_head_k * n_head, n_embd }, 0);
 
                             // Q/K normalization for attention layers
@@ -7461,10 +7505,12 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                         layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), { n_embd }, 0);
 
                         if (!hparams.is_recurrent(i)) {
-                            // Attention layers
+                            // Attention layers — use per-layer GQA dims (non-uniform with RYS)
+                            const int64_t n_embd_k_gqa_i = hparams.n_embd_k_gqa(i);
+                            const int64_t n_embd_v_gqa_i = hparams.n_embd_v_gqa(i);
                             layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), { n_embd, n_embd_head_k * n_head * 2 }, 0);
-                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa }, 0);
-                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa }, 0);
+                            layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), { n_embd, n_embd_k_gqa_i }, 0);
+                            layer.wv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "weight", i), { n_embd, n_embd_v_gqa_i }, 0);
                             layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), { n_embd_head_k * n_head, n_embd }, 0);
 
                             // Q/K normalization for attention layers

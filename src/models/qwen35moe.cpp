@@ -122,6 +122,8 @@ ggml_tensor * llm_build_qwen35moe ::build_layer_attn(
         int                       il) {
     const int64_t n_embd_head = hparams.n_embd_head_v();
     GGML_ASSERT(n_embd_head == hparams.n_embd_head_k());
+    // Per-layer n_head_kv (may differ from the scalar member in non-uniform models like RYS)
+    const int64_t n_head_kv = hparams.n_head_kv(il);
 
     // Order: joint QG projection, QG split, Q norm, KV projection, K norm, RoPE, attention
 
