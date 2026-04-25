@@ -17,7 +17,9 @@ This fork carries a **single commit on top of [`ggml-org/llama.cpp@d00685831`](h
 
 Any Qwen3.5-family model where RYS has duplicated one or more middle layers, e.g.:
 
-- [DJLougen/Ornstein3.6-35B-A3B-RYS-SABER](https://huggingface.co/DJLougen/Ornstein3.6-35B-A3B-RYS-SABER) — 41-layer RYS variant (BF16 GGUF)
+- [GestaltLabs/Ornstein-3.6-27B-RYS](https://huggingface.co/GestaltLabs/Ornstein-3.6-27B-RYS) — 65-layer RYS variant (layer 33 duplicated), 131K context
+- [GestaltLabs/Ornstein-3.6-27B-RYS-GGUF](https://huggingface.co/GestaltLabs/Ornstein-3.6-27B-RYS-GGUF) — Q8/Q6/Q5/Q4/Q3 quants
+- [DJLougen/Ornstein3.6-35B-A3B-RYS-SABER](https://huggingface.co/DJLougen/Ornstein3.6-35B-A3B-RYS-SABER) — 41-layer RYS MoE variant (BF16 GGUF)
 - [DJLougen/Ornstein3.6-35B-A3B-RYS-SABER-GGUF](https://huggingface.co/DJLougen/Ornstein3.6-35B-A3B-RYS-SABER-GGUF) — Q8/Q6/Q5/Q4/Q3 quants
 
 Stock llama.cpp, Ollama, LM Studio, and any runtime that embeds stock llama.cpp will fail to load these files until they pick up the patch.
@@ -38,6 +40,12 @@ cd llama.cpp
 cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
+# Ornstein-3.6-27B-RYS (65 layers, 131K context)
+./build/bin/llama-server -m ornstein-3.6-27b-rys-q4_k_m.gguf \
+  --host 0.0.0.0 --port 8080 --n-gpu-layers 99 --ctx-size 131072 \
+  --flash-attn on --jinja -ctk q4_0 -ctv q4_0
+
+# Ornstein3.6-35B-A3B-RYS (41 layers, 262K context)
 ./build/bin/llama-cli -m Ornstein3.6-35B-A3B-RYS-SABER-Q4_K_M.gguf -p "hi" -ngl 99
 ```
 
