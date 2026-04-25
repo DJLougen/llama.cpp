@@ -2414,7 +2414,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 // Mark recurrent layers (linear attention layers).
                 // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
                 // models where full_attention is not on a fixed interval); otherwise fall
-                // back to the stock interval-based pattern.
+                // back to probing SSM tensor names in the file, then the interval pattern.
                 {
                     bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
@@ -2425,16 +2425,30 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                             hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
                         }
                     } else {
-                        uint32_t full_attn_interval = 4;
-                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
-                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        // Probe for SSM tensors (handles RYS-duplicated non-uniform layers)
+                        int ssm_count = 0;
+                        for (uint32_t i = 0; i < hparams.n_layer && i < 8; ++i) {
+                            std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                            ssm_count += ml.weights_map.count(ssm_name);
+                        }
+                        if (ssm_count > 0) {
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                                hparams.recurrent_layer_arr[i] = ml.weights_map.count(ssm_name) > 0;
+                            }
+                        } else {
+                            uint32_t full_attn_interval = 4;
+                            ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                            }
                         }
                     }
                 }
 
                 switch (hparams.n_layer) {
                     case 48: type = LLM_TYPE_80B_A3B; break;
+                    case 66: type = LLM_TYPE_80B_A3B; break; // RYS-duplicated variant
                     default: type = LLM_TYPE_UNKNOWN;
                 }
             } break;
@@ -2453,7 +2467,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 // Mark recurrent layers (linear attention layers).
                 // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
                 // models where full_attention is not on a fixed interval); otherwise fall
-                // back to the stock interval-based pattern.
+                // back to probing SSM tensor names in the file, then the interval pattern.
                 {
                     bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
@@ -2464,10 +2478,23 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                             hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
                         }
                     } else {
-                        uint32_t full_attn_interval = 4;
-                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
-                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        // Probe for SSM tensors (handles RYS-duplicated non-uniform layers)
+                        int ssm_count = 0;
+                        for (uint32_t i = 0; i < hparams.n_layer && i < 8; ++i) {
+                            std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                            ssm_count += ml.weights_map.count(ssm_name);
+                        }
+                        if (ssm_count > 0) {
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                                hparams.recurrent_layer_arr[i] = ml.weights_map.count(ssm_name) > 0;
+                            }
+                        } else {
+                            uint32_t full_attn_interval = 4;
+                            ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                            }
                         }
                     }
                 }
@@ -2476,6 +2503,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                     case 24: type = hparams.n_embd == 1024 ? LLM_TYPE_0_8B : LLM_TYPE_2B; break;
                     case 32: type = hparams.n_embd == 2560 ? LLM_TYPE_4B : LLM_TYPE_9B; break;
                     case 64: type = LLM_TYPE_27B; break;
+                    case 66: type = LLM_TYPE_27B; break; // RYS-duplicated variant (+2 layers)
                     default: type = LLM_TYPE_UNKNOWN;
                 }
             } break;
@@ -2497,7 +2525,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 // Mark recurrent layers (linear attention layers).
                 // Prefer a per-layer head_count_kv array when present (RYS-style duplicated
                 // models where full_attention is not on a fixed interval); otherwise fall
-                // back to the stock interval-based pattern.
+                // back to probing SSM tensor names in the file, then the interval pattern.
                 {
                     bool has_per_layer_kv = false;
                     for (uint32_t i = 0; i < hparams.n_layer; ++i) {
@@ -2508,10 +2536,23 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                             hparams.recurrent_layer_arr[i] = (hparams.n_head_kv(i) == 0);
                         }
                     } else {
-                        uint32_t full_attn_interval = 4;
-                        ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
-                        for (uint32_t i = 0; i < hparams.n_layer; ++i) {
-                            hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                        // Probe for SSM tensors (handles RYS-duplicated non-uniform layers)
+                        int ssm_count = 0;
+                        for (uint32_t i = 0; i < hparams.n_layer && i < 8; ++i) {
+                            std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                            ssm_count += ml.weights_map.count(ssm_name);
+                        }
+                        if (ssm_count > 0) {
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                std::string ssm_name = "blk." + std::to_string(i) + ".ssm_conv1d.weight";
+                                hparams.recurrent_layer_arr[i] = ml.weights_map.count(ssm_name) > 0;
+                            }
+                        } else {
+                            uint32_t full_attn_interval = 4;
+                            ml.get_key(LLM_KV_FULL_ATTENTION_INTERVAL, full_attn_interval, false);
+                            for (uint32_t i = 0; i < hparams.n_layer; ++i) {
+                                hparams.recurrent_layer_arr[i] = ((i + 1) % full_attn_interval != 0);
+                            }
                         }
                     }
                 }
